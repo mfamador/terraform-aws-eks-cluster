@@ -11,7 +11,7 @@ This repository showcases the terraform template that will help you to create EK
 - Creates a new VPC with CIDR Block - 10.15.0.0/19 (i.e 8190 IPs in a VPC) in a region of your choice. Feel free to change it, values are `variables.tf`.
 - Creates 3 public & 3 private subnets with each size of 1024 IP addresses in each zones
 - Creates security groups required for cluster and worker nodes.
-- Creates recommened IAM service and EC2 roles required for EKS cluster.
+- Creates recommended IAM service and EC2 roles required for EKS cluster.
 - Creates Internet & NAT Gateway required for public and private communications.
 - Routing Table and routes for public and private subnets.
 
@@ -26,7 +26,7 @@ Before you execute this template make sure following dependencies are met.
 
 ### Setup
 ```
-$ git clone https://github.com/MediaIQ/terraform-aws-eks-cluster.git
+$ git clone https://github.com/mfamador/terraform-aws-eks-cluster.git
 $ cd terraform-aws-eks-cluster
 ```
 
@@ -87,7 +87,7 @@ NAME             TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
 svc/kubernetes   ClusterIP   10.100.0.1   <none>        443/TCP   1m
 ```
 
-Once cluster is verified succesfully, its time to create a configMap to add the worker nodes into the cluster. We have configured `output` with this template which will produce the configMap file content that you paste in *`aws-auth.yaml`*.
+Once cluster is verified successfully, its time to create a configMap to add the worker nodes into the cluster. We have configured `output` with this template which will produce the configMap file content that you paste in *`aws-auth.yaml`*.
 
 #### Add worker node
 ```
@@ -101,16 +101,3 @@ $ kubectl get no -w
 **Note:-** You should be seeing nodes joining the cluster within less than minutes.
 
 ---
-
-## Contribution
-We are happy to accept the changes that you think can help the utilities grow.
-
-Here are some things to note:
-
-* Raise a ticket for any requirement
-* Discuss the implementation requirement or bug fix with the team members
-* Fork the repository and solve the issue in one single commit
-* Raise a PR regarding the same issue and attach the required documentation or provide a more detailed overview of the changes
-
-
-# terraform-aws-eks-cluster
