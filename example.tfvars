@@ -1,6 +1,6 @@
-cluster-name="eks-demo"
+cluster-name = "eks-demo"
 eks-worker-ami = "ami-04fada31d8c50b7a8"
 eks_version = "1.14"
 region = "eu-west-3"
 worker-node-instance_type = "t2.micro"
-ssh_key_pair="paris-dev"
+ssh_key_pair = "paris-dev"

@@ -1,61 +1,136 @@
-# EKS currently documents this required userdata for EKS worker nodes to
-# properly configure Kubernetes applications on the EC2 instance.
-# We utilize a Terraform local here to simplify Base64 encoding this
-# information into the AutoScaling Launch Configuration.
-# More information: https://amazon-eks.s3-us-west-2.amazonaws.com/1.10.3/2018-06-05/amazon-eks-nodegroup.yaml
+resource "aws_iam_role" "eks-node" {
+  name = "eks-node"
 
-## updated AMI support for /etc/eks/bootstrap.sh
-##
+  assume_role_policy = <<POLICY
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": "sts:AssumeRole",
+      "Principal": {
+        "Service": "ec2.amazonaws.com"
+      },
+      "Effect": "Allow",
+      "Sid": ""
+    }
+  ]
+}
+POLICY
+}
+
+## Kube2IAM - allow worker to assume all roles
+resource "aws_iam_role_policy" "kube2iam_worker_policy" {
+  name = "kube2iam_worker_policy"
+  role = aws_iam_role.eks-node.id
+
+  policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": [
+        "sts:AssumeRole"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+}
+
+##  Allow worker nodes to send memory metrics to cloudwatch
+resource "aws_iam_role_policy" "mem_scaling_worker_policy" {
+  name = "mem_scaling_worker_policy"
+  role = aws_iam_role.eks-node.id
+
+  policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": [
+        "cloudwatch:PutMetricData",
+        "ec2:DescribeTags",
+        "cloudwatch:GetMetricStatistics",
+        "cloudwatch:ListMetrics"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+}
+
+resource "aws_iam_role_policy_attachment" "eks-node-AmazonEKSWorkerNodePolicy" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+  role = aws_iam_role.eks-node.name
+}
+
+resource "aws_iam_role_policy_attachment" "eks-node-AmazonEKS_CNI_Policy" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+  role = aws_iam_role.eks-node.name
+}
+
+resource "aws_iam_role_policy_attachment" "eks-node-AmazonEC2ContainerRegistryReadOnly" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+  role = aws_iam_role.eks-node.name
+}
+
+resource "aws_iam_instance_profile" "eks-node" {
+  name = "eks-instance-role"
+  role = aws_iam_role.eks-node.name
+}
 
 resource "aws_security_group" "eks-node" {
-  name        = "eks-worker-node"
+  name = "eks-worker-node"
   description = "Security group for all nodes in the cluster"
-  vpc_id      = "${aws_vpc.eks.id}"
+  vpc_id = aws_vpc.eks.id
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    from_port = 0
+    to_port = 0
+    protocol = "-1"
+    cidr_blocks = [
+      "0.0.0.0/0"]
   }
 
-  tags = "${
-    map(
-     "Name", "eks-worker-node-sg",
-     "kubernetes.io/cluster/${var.cluster-name}", "owned"
-    )
-  }"
+  tags = map(
+  "Name", "eks-worker-node-sg",
+  "kubernetes.io/cluster/${var.cluster-name}", "owned"
+  )
 }
 
 resource "aws_security_group_rule" "eks-node-ingress-self" {
-  description              = "Allow node to communicate with each other"
-  from_port                = 0
-  protocol                 = "-1"
-  security_group_id        = "${aws_security_group.eks-node.id}"
-  source_security_group_id = "${aws_security_group.eks-node.id}"
-  to_port                  = 65535
-  type                     = "ingress"
+  description = "Allow node to communicate with each other"
+  from_port = 0
+  protocol = "-1"
+  security_group_id = aws_security_group.eks-node.id
+  source_security_group_id = aws_security_group.eks-node.id
+  to_port = 65535
+  type = "ingress"
 }
 
 resource "aws_security_group_rule" "eks-node-ingress-cluster" {
-  description              = "Allow worker Kubelets and pods to receive communication from the cluster control plane"
-  from_port                = 1025
-  protocol                 = "tcp"
-  security_group_id        = "${aws_security_group.eks-node.id}"
-  source_security_group_id = "${aws_security_group.eks-cluster.id}"
-  to_port                  = 65535
-  type                     = "ingress"
+  description = "Allow worker Kubelets and pods to receive communication from the cluster control plane"
+  from_port = 1025
+  protocol = "tcp"
+  security_group_id = aws_security_group.eks-node.id
+  source_security_group_id = aws_security_group.eks-cluster.id
+  to_port = 65535
+  type = "ingress"
 }
 
 # HPA requires 443 to be open for k8s control plane.
 resource "aws_security_group_rule" "eks-node-ingress-hpa" {
-  description              = "Allow HPA to receive communication from the cluster control plane"
-  from_port                = 443
-  protocol                 = "tcp"
-  security_group_id        = "${aws_security_group.eks-node.id}"
-  source_security_group_id = "${aws_security_group.eks-cluster.id}"
-  to_port                  = 443
-  type                     = "ingress"
+  description = "Allow HPA to receive communication from the cluster control plane"
+  from_port = 443
+  protocol = "tcp"
+  security_group_id = aws_security_group.eks-node.id
+  source_security_group_id = aws_security_group.eks-cluster.id
+  to_port = 443
+  type = "ingress"
 }
 
 #### User data for worker launch
@@ -70,14 +145,16 @@ USERDATA
 }
 
 resource "aws_launch_configuration" "eks-private-lc" {
-  iam_instance_profile        = "${aws_iam_instance_profile.eks-node.name}"
-  image_id                    = "${var.eks-worker-ami}" ## visit https://docs.aws.amazon.com/eks/latest/userguide/eks-optimized-ami.html
-  instance_type               = "${var.worker-node-instance_type}" # use instance variable
-  key_name                    = "${var.ssh_key_pair}"
-  name_prefix                 = "eks-private"
-  security_groups             = ["${aws_security_group.eks-node.id}"]
-  user_data_base64            = "${base64encode(local.eks-node-private-userdata)}"
-  
+  iam_instance_profile = aws_iam_instance_profile.eks-node.name
+  image_id = var.eks-worker-ami
+  ## visit https://docs.aws.amazon.com/eks/latest/userguide/eks-optimized-ami.html
+  instance_type = var.worker-node-instance_type
+  key_name = var.ssh_key_pair
+  name_prefix = "eks-private"
+  security_groups = [
+    aws_security_group.eks-node.id]
+  user_data_base64 = base64encode(local.eks-node-private-userdata)
+
   root_block_device {
     delete_on_termination = true
     volume_size = 30
@@ -90,49 +167,45 @@ resource "aws_launch_configuration" "eks-private-lc" {
 }
 
 resource "aws_autoscaling_group" "eks-private-asg" {
-  desired_capacity     = 1
-  launch_configuration = "${aws_launch_configuration.eks-private-lc.id}"
-  max_size             = 2
-  min_size             = 1
-  name                 = "eks-private"
-  vpc_zone_identifier  = aws_subnet.eks-private.*.id
+  desired_capacity = 1
+  launch_configuration = aws_launch_configuration.eks-private-lc.id
+  max_size = 2
+  min_size = 1
+  name = "eks-private"
+  vpc_zone_identifier = aws_subnet.eks-private.*.id
 
   tag {
-    key                 = "Name"
-    value               = "eks-worker-private-node"
+    key = "Name"
+    value = "eks-worker-private-node"
     propagate_at_launch = true
   }
 
   tag {
-    key                 = "kubernetes.io/cluster/${var.cluster-name}"
-    value               = "owned"
+    key = "kubernetes.io/cluster/${var.cluster-name}"
+    value = "owned"
     propagate_at_launch = true
   }
 
-## Enable this when you use cluster autoscaler within cluster.
-## https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/aws/README.md
-
-#  tag {
-#    key                 = "k8s.io/cluster-autoscaler/enabled"
-#    value               = ""
-#    propagate_at_launch = true
-#  }
-#
-#  tag {
-#    key                 = "k8s.io/cluster-autoscaler/${var.cluster-name}"
-#    value               = ""
-#    propagate_at_launch = true
-#  }
-
+  ## Enable this when you use cluster autoscaler within cluster.
+  ## https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/aws/README.md
+  #  tag {
+  #    key                 = "k8s.io/cluster-autoscaler/enabled"
+  #    value               = ""
+  #    propagate_at_launch = true
+  #  }
+  #
+  #  tag {
+  #    key                 = "k8s.io/cluster-autoscaler/${var.cluster-name}"
+  #    value               = ""
+  #    propagate_at_launch = true
+  #  }
 }
 
-
 # Adding EKS workers scaling policy for scale up/down 
-# Creating Cloudwatch alarms for both scale up/down 
-
+# Creating Cloudwatch alarms for both scale up/down
 resource "aws_autoscaling_policy" "eks-cpu-policy-private" {
   name = "eks-cpu-policy-private"
-  autoscaling_group_name = "${aws_autoscaling_group.eks-private-asg.name}"
+  autoscaling_group_name = aws_autoscaling_group.eks-private-asg.name
   adjustment_type = "ChangeInCapacity"
   scaling_adjustment = "1"
   cooldown = "300"
@@ -151,17 +224,18 @@ resource "aws_cloudwatch_metric_alarm" "eks-cpu-alarm-private" {
   statistic = "Average"
   threshold = "80"
 
-dimensions = {
-  "AutoScalingGroupName" = "${aws_autoscaling_group.eks-private-asg.name}"
-}
+  dimensions = {
+    "AutoScalingGroupName" = aws_autoscaling_group.eks-private-asg.name
+  }
   actions_enabled = true
-  alarm_actions = ["${aws_autoscaling_policy.eks-cpu-policy-private.arn}"]
+  alarm_actions = [
+    aws_autoscaling_policy.eks-cpu-policy-private.arn]
 }
 
 # scale down policy
 resource "aws_autoscaling_policy" "eks-cpu-policy-scaledown-private" {
   name = "eks-cpu-policy-scaledown-private"
-  autoscaling_group_name = "${aws_autoscaling_group.eks-private-asg.name}"
+  autoscaling_group_name = aws_autoscaling_group.eks-private-asg.name
   adjustment_type = "ChangeInCapacity"
   scaling_adjustment = "-1"
   cooldown = "300"
@@ -180,9 +254,10 @@ resource "aws_cloudwatch_metric_alarm" "eks-cpu-alarm-scaledown-private" {
   statistic = "Average"
   threshold = "5"
 
-dimensions = {
-  "AutoScalingGroupName" = "${aws_autoscaling_group.eks-private-asg.name}"
-}
+  dimensions = {
+    "AutoScalingGroupName" = aws_autoscaling_group.eks-private-asg.name
+  }
   actions_enabled = true
-  alarm_actions = ["${aws_autoscaling_policy.eks-cpu-policy-scaledown-private.arn}"]
+  alarm_actions = [
+    aws_autoscaling_policy.eks-cpu-policy-scaledown-private.arn]
 }
