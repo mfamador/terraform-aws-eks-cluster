@@ -1,11 +1,3 @@
-#
-# EKS VPC Resources
-#  * VPC
-#  * Subnets
-#  * Internet Gateway
-#  * Route Table
-#
-
 resource "aws_vpc" "eks" {
   cidr_block = "10.15.0.0/19"
   enable_dns_hostnames = true
@@ -16,7 +8,6 @@ resource "aws_vpc" "eks" {
     )
 }
 
-## EKS public subnets
 resource "aws_subnet" "eks-public" {
   count = "${length(var.public_subnets)}"
 
