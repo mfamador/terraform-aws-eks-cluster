@@ -100,4 +100,3 @@ $ kubectl get no -w
 ```
 **Note:-** You should be seeing nodes joining the cluster within less than minutes.
 
----
